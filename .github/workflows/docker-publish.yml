@@ -54,8 +54,8 @@ jobs:
             type=ref,event=branch
             # Set tag for PRs
             type=ref,event=pr
-            # Set sha tag
-            type=sha,prefix={{branch}}-,suffix=-{{date 'X'}}
+            # Set short SHA
+            type=sha,prefix=sha-
           labels: |
             org.opencontainers.image.title=MyImage
             org.opencontainers.image.description=A simple Go application that displays Hello METAPRO
