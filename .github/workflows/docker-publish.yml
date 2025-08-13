@@ -1,0 +1,101 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'  # Trigger on version tags like v1.0.0
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}  # Will be ghcr.io/vtmocanu/myimage
+
+permissions:
+  contents: read
+  packages: write  # Needed to push to GHCR
+  id-token: write  # Needed for attestation
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Step 1: Checkout the code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      # Step 2: Set up Docker Buildx for advanced features
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      # Step 3: Log in to GitHub Container Registry
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      # Step 4: Extract metadata for Docker tags and labels
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Set latest tag for main branch
+            type=raw,value=latest,enable={{is_default_branch}}
+            # Set tag for version tags
+            type=ref,event=tag
+            # Set tag for branches
+            type=ref,event=branch
+            # Set tag for PRs
+            type=ref,event=pr
+            # Set sha tag
+            type=sha,prefix={{branch}}-,suffix=-{{date 'X'}}
+          labels: |
+            org.opencontainers.image.title=MyImage
+            org.opencontainers.image.description=A simple Go application that displays Hello METAPRO
+            org.opencontainers.image.vendor=vtmocanu
+      
+      # Step 5: Build and push Docker image
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64  # Multi-platform build
+          push: ${{ github.event_name != 'pull_request' }}  # Don't push on PRs
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Generate attestation for supply chain security
+          provenance: true
+          sbom: true
+      
+      # Step 6: Generate artifact attestation (for main branch only)
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v1
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      
+      # Step 7: Output the image URL
+      - name: Image URL
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "🚀 Image pushed successfully!"
+          echo "📦 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          echo "🏷️ Tags: ${{ steps.meta.outputs.tags }}"
+          echo ""
+          echo "To pull the image:"
+          echo "  docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          echo ""
+          echo "To run the container:"
+          echo "  docker run -p 80:80 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
