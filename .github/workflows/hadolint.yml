@@ -1,0 +1,63 @@
+name: Dockerfile Lint
+
+# When this workflow runs
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - '.github/workflows/hadolint.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - '.github/workflows/hadolint.yml'
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  lint:
+    name: Dockerfile Linting
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Step 1: Checkout the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      # Step 2: Run Hadolint on the Dockerfile
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          # Set the format for the output (tty is colored, json for parsing)
+          format: tty
+          # Uncomment below to make the build fail on any warning
+          # failure-threshold: warning
+          
+      # Step 3: Upload results as artifact (optional, useful for debugging)
+      - name: Upload Hadolint results
+        uses: actions/upload-artifact@v4
+        if: always() # Upload even if previous step fails
+        with:
+          name: hadolint-results
+          path: hadolint-results.json
+          retention-days: 30
+        continue-on-error: true # Don't fail if artifact upload fails
+      
+      # Step 4: Comment on PR with results (only on pull requests)
+      - name: Update PR with results
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request' && always()
+        with:
+          script: |
+            const output = `#### Dockerfile Lint 📋\`${{ steps.hadolint.outcome }}\`
+            
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+        continue-on-error: true
