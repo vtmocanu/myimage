@@ -5,8 +5,8 @@ COPY main.go .
 RUN go mod init myimage && \
     go build -o myimage main.go
 
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates
+FROM alpine:3.22
+RUN apk --no-cache add ca-certificates=20250619-r0
 WORKDIR /root/
 COPY --from=builder /app/myimage .
 
