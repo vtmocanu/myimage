@@ -14,6 +14,12 @@ on:
       - '.github/workflows/hadolint.yml'
   workflow_dispatch: # Allows manual trigger from GitHub UI
 
+# Permissions needed for the workflow
+permissions:
+  contents: read
+  pull-requests: write  # Needed to comment on PRs
+  issues: write        # Needed to comment on issues
+
 jobs:
   lint:
     name: Dockerfile Linting
@@ -26,6 +32,7 @@ jobs:
       
       # Step 2: Run Hadolint on the Dockerfile
       - name: Run Hadolint
+        id: hadolint
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile
@@ -33,26 +40,27 @@ jobs:
           format: tty
           # Uncomment below to make the build fail on any warning
           # failure-threshold: warning
-          
-      # Step 3: Upload results as artifact (optional, useful for debugging)
-      - name: Upload Hadolint results
-        uses: actions/upload-artifact@v4
-        if: always() # Upload even if previous step fails
-        with:
-          name: hadolint-results
-          path: hadolint-results.json
-          retention-days: 30
-        continue-on-error: true # Don't fail if artifact upload fails
       
-      # Step 4: Comment on PR with results (only on pull requests)
+      # Step 3: Comment on PR with results (only on pull requests)
       - name: Update PR with results
         uses: actions/github-script@v7
         if: github.event_name == 'pull_request' && always()
         with:
           script: |
-            const output = `#### Dockerfile Lint 📋\`${{ steps.hadolint.outcome }}\`
+            const status = '${{ steps.hadolint.outcome }}';
+            const statusEmoji = status === 'success' ? '✅' : '❌';
+            const statusText = status === 'success' ? 'Passed' : 'Failed';
             
-            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+            const output = `## Dockerfile Lint Results ${statusEmoji}
+            
+            **Status:** ${statusText}
+            **File:** Dockerfile
+            **Linter:** Hadolint
+            
+            ${status !== 'success' ? '⚠️ Please check the workflow logs for details about the issues found.' : '🎉 All checks passed! Your Dockerfile follows best practices.'}
+            
+            ---
+            *Triggered by @${{ github.actor }} via ${{ github.event_name }}*`;
             
             github.rest.issues.createComment({
               issue_number: context.issue.number,
